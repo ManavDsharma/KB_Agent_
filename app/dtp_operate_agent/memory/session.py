@@ -1,113 +1,79 @@
-import os
+"""
+AgentCore Memory integration.
+
+Conversation events are persisted to AgentCore Memory (keyed by
+memory_id + actor_id + session_id) so a session can survive a runtime
+restart. Long-term memory retrieval is off by default because it adds
+tokens to every prompt; enable it with ENABLE_LTM_RETRIEVAL=true.
+"""
+
 import logging
- 
-from bedrock_agentcore.memory.integrations.strands.config import (
-    AgentCoreMemoryConfig,
-    RetrievalConfig,
-)
-from bedrock_agentcore.memory.integrations.strands.session_manager import (
-    AgentCoreMemorySessionManager,
-)
- 
-logger = logging.getLogger(__name__)
- 
-AWS_REGION = os.getenv(
-    "AWS_REGION",
-    "ap-south-1",
-)
- 
- 
-def get_memory_id():
-    """
-    AgentCore injects the Memory ID into the runtime environment
-    when the memory is associated with the AgentCore project.
-    """
- 
-    # Check possible normalized environment variable names.
-    possible_names = [
-        "MEMORY_DtpOperateAgentMemory_ID",
-        "MEMORY_DTPOPERATEAGENTMEMORY_ID",
-        "MEMORY_DTP_OPERATE_AGENT_MEMORY_ID"
-    ]
- 
-    for name in possible_names:
-        value = os.getenv(name)
- 
-        if value:
-            logger.info(
-                "AgentCore Memory ID found using %s",
-                name,
-            )
-            return value
- 
-    # Useful during troubleshooting.
-    logger.warning(
-        "AgentCore Memory ID was not found. "
-        "Available MEMORY environment variables: %s",
-        [
-            key
-            for key in os.environ
-            if "MEMORY" in key.upper()
-        ],
-    )
- 
-    return None
- 
- 
-def get_memory_session_manager(
-    session_id: str,
-    actor_id: str,
+from typing import Optional
+
+from config import AWS_REGION, ENABLE_LTM_RETRIEVAL, get_memory_id
+
+logger = logging.getLogger("dtp.memory")
+
+
+def create_memory_session_manager(
+    session_id: Optional[str],
+    actor_id: Optional[str],
 ):
     """
-    Create an AgentCore Memory session manager.
+    Create the AgentCore Memory session manager, or None.
+
+    Memory problems never stop the agent: without a manager the agent
+    still works, it just does not persist the session.
     """
- 
+
+    if not session_id or not actor_id:
+        return None
+
     memory_id = get_memory_id()
- 
+
     if not memory_id:
+        logger.info("AgentCore Memory not configured; session is not persisted.")
         return None
- 
-    if not session_id:
-        logger.warning(
-            "session_id is missing"
+
+    try:
+
+        from bedrock_agentcore.memory.integrations.strands.config import (
+            AgentCoreMemoryConfig,
+            RetrievalConfig,
         )
-        return None
- 
-    if not actor_id:
-        logger.warning(
-            "actor_id is missing"
+
+        from bedrock_agentcore.memory.integrations.strands.session_manager import (
+            AgentCoreMemorySessionManager,
         )
+
+        retrieval_config = None
+
+        if ENABLE_LTM_RETRIEVAL:
+
+            retrieval_config = {
+                f"/users/{actor_id}/preferences": RetrievalConfig(
+                    top_k=3,
+                    relevance_score=0.5,
+                ),
+                f"/summaries/{actor_id}/{session_id}": RetrievalConfig(
+                    top_k=3,
+                    relevance_score=0.5,
+                ),
+            }
+
+        config = AgentCoreMemoryConfig(
+            memory_id=memory_id,
+            session_id=session_id,
+            actor_id=actor_id,
+            retrieval_config=retrieval_config,
+            # Do not reload old tool payloads into a restored session.
+            filter_restored_tool_context=True,
+        )
+
+        return AgentCoreMemorySessionManager(config, AWS_REGION)
+
+    except Exception:
+
+        logger.exception("AgentCore Memory initialization failed")
+
         return None
- 
-    retrieval_config = {
-        f"/users/{actor_id}/preferences": RetrievalConfig(
-            top_k=3,
-            relevance_score=0.5,
-        ),
-        f"/summaries/{actor_id}/{session_id}": RetrievalConfig(
-            top_k=3,
-            relevance_score=0.5,
-        ),
-    }
- 
-    memory_config = AgentCoreMemoryConfig(
-        memory_id=memory_id,
-        session_id=session_id,
-        actor_id=actor_id,
-        retrieval_config=retrieval_config,
-    )
- 
-    logger.info(
-        "Creating AgentCore Memory session manager "
-        "memory_id=%s session_id=%s actor_id=%s",
-        memory_id,
-        session_id,
-        actor_id,
-    )
- 
-    return AgentCoreMemorySessionManager(
-        memory_config,
-        AWS_REGION,
-    )
- 
- 
