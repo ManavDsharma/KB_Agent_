@@ -15,7 +15,7 @@ treat every change as production-affecting.
 
 ```bash
 cd local_dev
-python -m unittest discover -s tests -t . -v     # 395 offline tests — run after every change
+python -m unittest discover -s tests -t . -v     # 410 offline tests — run after every change
 python dev/chat.py --demo --meta                  # try conversations with in-memory sample data, no AWS
 python dev/check_aws.py                           # read-only preflight against real AWS
 python dev/chat.py --read-only --meta             # real AWS, nothing can be written
@@ -96,8 +96,9 @@ Layering: `main.py` (transport) → `agent.py` (orchestration) → `router.py`/`
   `TRUE`/`FALSE`; assignee/opener are e-mails; `team_id` holds a team **name**.
 * **Category matrix** `issue_id` (`Issue-N`); `active` `Yes`/`No`; dates `YYYY-MM-DD`; `team_id` = team name.
 * **Roster** `UID` unique **per row**; **one row per employee per month** (`year`, `month`); `emp_id` =
-  employee number; **`employee_id` = e-mail**; `days_availability` = `{"1": "Y", "2": "N"}` keyed by
-  **day of month**. A person = their monthly rows = `emp:<emp_id>`. Missing month ⇒ "no roster", not "N".
+  employee number; **`employee_id` = e-mail**; `days_availability` = `{"1": "Y", "2": "N", "6": "NA"}`
+  keyed by **day of month**: `Y` available, `N` not available (leave), `NA` weekend / non-working day. A person
+  = their monthly rows = `emp:<emp_id>`. Missing month ⇒ "no roster", not "N".
 * Category-matrix and roster team names may differ ("Identity Operations" vs "Access Management"); never
   guess a mapping — report it (open question in the log).
 * Roster delete removes **one monthly row**; issues cannot be deleted.

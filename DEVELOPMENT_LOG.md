@@ -18,6 +18,7 @@ Last updated: 2026-09-30.
 | **V2.2** | Token optimisation after the first real run showed **24,623 input tokens** for one question | 362 tests; fixed per-call cost cut 65–78 % for focused requests |
 | **V2.3** | Conversational, well-formatted responses for a chat frontend (cards, badges, sentences, suggestion chips); output-cap fix | 395 tests |
 | **V2.4** | Deployment readiness: deployable folder separated from local tooling; integration with the separate React/FastAPI application | 395 tests |
+| **V2.5** | Roster availability now understands `NA` (weekend / non-working day) as well as `Y` / `N` | 410 tests |
 
 ---
 
@@ -266,6 +267,31 @@ duplicate-React problem in the test harness only, not in the page.)
   default (`dtp-web-user`). Replace `_actor_for` in `agent_ws.py` with the signed-in user; until then every
   change is audited under that one name.
 * Streaming/progress messages are still not available.
+
+---
+
+## 5d. Version 2.5 — `NA` in the availability map
+
+### Trigger
+The roster's `days_availability` uses three values, not two: `Y` (available), `N` (not available, e.g. leave)
+and `NA` (not scheduled: weekend / non-working day). The code only knew `Y` and `N`.
+
+### What would have gone wrong
+* An `NA` day was reported as "No data" instead of "weekend".
+* The month summary ignored weekends, and "off days" could not tell leave from a weekend.
+* Writing "weekend" was rejected (the roster's vocabulary contained `NA`, so the Y/N synonym mapping was off).
+* A whole team's weekend answered "0 of N available" instead of "nobody is scheduled".
+
+### Changes
+* Values are `Y` → *Available*, `N` → *Not available*, `NA` → *Non-working day* everywhere (single employee,
+  team table, roster card, tool outputs).
+* Wording is mapped to the right code: available/working → `Y`; leave/off/unavailable/sick → `N`;
+  weekend/NA/n/a/week off/non-working → `NA`; anything else is rejected with the three valid values.
+* The roster card now says e.g. `20 working days; off on: 3, 12; 8 weekend / non-working days`.
+* The model prompt and the tool descriptions explain `NA`; the reference React page colours *Non-working day*
+  neutral.
+
+Result: **410 tests**.
 
 ---
 

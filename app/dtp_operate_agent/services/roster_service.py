@@ -5,7 +5,8 @@ Shape of the data
     * One row per employee per month (year, month), identified by UID.
     * emp_id is the employee number; employee_id holds the employee's
       e-mail address (also what incidents store in assigned_to).
-    * days_availability maps the day of the month ("1".."31") to "Y"/"N".
+    * days_availability maps the day of the month ("1".."31") to "Y" (available),
+      "N" (not available, e.g. leave) or "NA" (not scheduled: weekend / non-working day).
 
 So "is Rohit available on 2026-09-30?" means: find Rohit's row for
 2026-09 and read day "30". A person is the set of their monthly rows and
@@ -88,9 +89,17 @@ _YES = {"y", "yes", "available", "avail", "working", "present", "on", "in", "tru
 
 _NO = {
     "n", "no", "leave", "off", "unavailable", "not available", "absent",
-    "holiday", "week off", "weekoff", "sick", "sick leave", "pto",
-    "vacation", "false", "not working",
+    "holiday", "sick", "sick leave", "pto", "vacation", "false", "not working",
 }
+
+# "NA": the day is not a working day for anyone (weekend), which is different
+# from an employee being away on a working day ("N").
+_NON_WORKING = {
+    "na", "n a", "not applicable", "weekend", "week off", "weekoff", "weekly off",
+    "non working", "non working day", "nonworking", "day off weekend",
+}
+
+_VALUES = {"Y", "N", "NA"}
 
 
 # ============================================================
@@ -445,17 +454,23 @@ class RosterService:
 
         days = self._days(row["UID"])
 
-        working = [key for key, value in days.items() if str(value).upper() == "Y"]
+        def marked(code):
+            return [key for key, value in days.items() if str(value).strip().upper() == code]
 
-        off = sorted(int(key) for key, value in days.items() if str(value).upper() == "N" and str(key).isdigit())
+        working = marked("Y")
 
-        if not working and not off:
+        off = sorted(int(key) for key in marked("N") if str(key).isdigit())
+
+        weekend = marked("NA")
+
+        if not working and not off and not weekend:
             return None
 
         return {
             "month": _month_label(_month_key(row)),
             "working_days": len(working),
             "off_days": off,
+            "non_working_days": len(weekend),
         }
 
     # --------------------------------------------------------
@@ -682,7 +697,9 @@ class RosterService:
 
         vocabulary = self._vocabulary()
 
-        binary = {item.upper() for item in vocabulary} <= {"Y", "N"}
+        # Y / N / NA is the roster's vocabulary; anything else already in use
+        # is matched as written.
+        binary = {item.upper() for item in vocabulary} <= _VALUES
 
         if isinstance(value, bool):
             value = "yes" if value else "no"
@@ -700,12 +717,16 @@ class RosterService:
             if text in _YES:
                 return "Y"
 
+            if text in _NON_WORKING:
+                return "NA"
+
             if text in _NO:
                 return "N"
 
             raise ServiceError(
                 "invalid_value",
-                f"'{value}' is not a valid availability. Use Y (available) or N (not available / leave).",
+                f"'{value}' is not a valid availability. Use Y (available), "
+                "N (not available / leave) or NA (weekend / non-working day).",
             )
 
         return resolve_choice(value, vocabulary, "availability")

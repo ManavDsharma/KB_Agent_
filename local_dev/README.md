@@ -13,7 +13,7 @@ integration_reference/     mirror of your separate frontend / backend files that
 
 | Path | Purpose |
 | --- | --- |
-| `tests/` | 395 offline tests (fake DynamoDB / Knowledge Base, scripted model, no network) |
+| `tests/` | 410 offline tests (fake DynamoDB / Knowledge Base, scripted model, no network) |
 | `dev/chat.py` | Chat in the terminal (`--demo` = no AWS; `--read-only` = real AWS, nothing written) |
 | `dev/check_aws.py` | Read-only preflight against real AWS (credentials, table keys/types, KB, model) |
 | `dev/run_local.py` | Host the agent locally exactly like AgentCore (`/ping`, `/invocations` on :8080) |

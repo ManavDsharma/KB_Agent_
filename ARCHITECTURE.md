@@ -95,7 +95,7 @@ user's back.
 | `tools/` | Thin, typed, token-lean wrappers over services, grouped into domains |
 | `config.py` | Environment-driven configuration and shared boto3 clients |
 | `local_dev/dev/` | `chat.py`, `check_aws.py`, `run_local.py`, `invoke_example.py` — local tooling, never deployed |
-| `local_dev/tests/` | 395 offline tests: fake DynamoDB/KB, scripted model — never deployed |
+| `local_dev/tests/` | 410 offline tests: fake DynamoDB/KB, scripted model — never deployed |
 
 ### Services (`services/`)
 
@@ -116,7 +116,7 @@ user's back.
 | --- | --- | --- |
 | Incident | `ticket_id` | INC and REQ share the table; timestamps `YYYY-MM-DD HH:MM`; breach flags are text `TRUE`/`FALSE`; assignees/openers are e-mail addresses; `team_id` holds a team name |
 | Category matrix | `issue_id` | `active` is `Yes`/`No`; dates `YYYY-MM-DD`; `team_id` holds a team name |
-| Roster | `UID` (unique per row) | **One row per employee per month** (`year`, `month`). `emp_id` = employee number, `employee_id` = the employee's **e-mail**, `days_availability` = `{"1": "Y", "2": "N", …}` keyed by day of month |
+| Roster | `UID` (unique per row) | **One row per employee per month** (`year`, `month`). `emp_id` = employee number, `employee_id` = the employee's **e-mail**, `days_availability` = `{"1": "Y", "2": "N", "6": "NA", …}` keyed by day of month (`Y` available, `N` not available, `NA` weekend / non-working) |
 
 A **person** is the set of their monthly rows, referenced as `emp:<emp_id>`. Availability on
 `2026-09-30` reads the person's 2026-09 row, day `30`. A month with no row means "no roster", never
@@ -267,7 +267,7 @@ uses real AWS without writing; `check_aws.py` is the preflight.
 | Services own validation and error mapping | Consistent data, safe messages |
 | Roster modelled as monthly rows / persons | Matches the real table |
 | Domain-scoped tool definitions + caching | Cut the dominant per-call token cost |
-| Offline tests with fakes and a scripted model | Fast, safe regression net (395 tests) |
+| Offline tests with fakes and a scripted model | Fast, safe regression net (410 tests) |
 | `READ_ONLY_MODE`, `check_aws.py`, `chat.py` | Safe testing against real AWS |
 
 ---

@@ -42,7 +42,7 @@ function cellTone(value) {
   const v = String(value ?? "").toLowerCase();
   if (v === "available") return "success";
   if (v === "not available") return "warning";
-  if (v === "no data") return "neutral";
+  if (v === "no data" || v === "non-working day") return "neutral";
   if (/^p1|critical/.test(v)) return "critical";
   if (/^p2|^high$/.test(v)) return "warning";
   if (/^p3|^medium$/.test(v)) return "info";

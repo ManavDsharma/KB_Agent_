@@ -6,7 +6,8 @@ from services import get_roster_service
 from tools.common import actor_of, out
 
 # Roster facts: one row per employee per month; availability per day is
-# Y (available) or N (not available / leave). An employee is referred to by
+# Y (available), N (not available / leave) or NA (weekend / non-working day).
+# An employee is referred to by
 # name, e-mail, employee number or the `ref` (emp:12) from the session context.
 
 
@@ -45,8 +46,8 @@ def get_employee_availability(
     end_date: Optional[str] = None,
 ) -> str:
     """One employee's availability for a date or range (max 31 days): Y
-    available, N not available, null nothing recorded; `no_roster_for` lists
-    months without a roster. Dates: YYYY-MM-DD, today, tomorrow, yesterday.
+    available, N not available (leave), NA weekend / non-working day, null
+    nothing recorded; `no_roster_for` lists months without a roster. Dates: YYYY-MM-DD, today, tomorrow, yesterday.
     For a whole team use get_team_availability instead."""
 
     return out(
@@ -59,7 +60,7 @@ def get_team_availability(
     team: str,
     date: str = "today",
 ) -> str:
-    """Availability (Y/N) of every member of a team on one date, in one call.
+    """Availability (Y / N / NA weekend) of every member of a team on one date, in one call.
     `team`: ID or name. Dates: YYYY-MM-DD, today, tomorrow, yesterday."""
 
     return out(get_roster_service().get_team_availability(team, date), ["members"])
@@ -71,8 +72,9 @@ def set_employee_availability(
     availability: Dict[str, Any],
     tool_context=None,
 ) -> str:
-    """Set availability for dates: {"2026-10-01": "N"}. Y/available/working =
-    available; N/leave/off = not available. The month must have a roster row."""
+    """Set availability for dates: {"2026-10-01": "N"}. Y/available = available;
+    N/leave/off = not available; NA/weekend = non-working day. The month must
+    have a roster row."""
 
     return out(
         get_roster_service().set_employee_availability(
@@ -90,8 +92,8 @@ def set_team_availability(
     availability: Any,
     tool_context=None,
 ) -> str:
-    """Set the same availability (Y/available or N/leave/off) for every member
-    of a team on one date."""
+    """Set the same availability (Y / N / NA, or words like available, leave,
+    weekend) for every member of a team on one date."""
 
     return out(
         get_roster_service().set_team_availability(

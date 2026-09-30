@@ -85,7 +85,7 @@ _EMPLOYEE_SHOW = [
     "active",
 ]
 
-_AVAILABILITY_WORDS = {"Y": "Available", "N": "Not available"}
+_AVAILABILITY_WORDS = {"Y": "Available", "N": "Not available", "NA": "Non-working day"}
 
 _INCIDENT_SHOW = [name for name in INCIDENT_VIEW_FIELDS if name not in ("ticket_id", "url", "source_system")]
 
@@ -477,7 +477,12 @@ def _employee_view(intent: Intent, state: SessionState, actor: Optional[str]) ->
 
         key = f"availability_{summary.get('month')}"
 
-        pairs.append((key, f"{summary.get('working_days')} working days; off on: {off}"))
+        text = f"{summary.get('working_days')} working days; off on: {off}"
+
+        if summary.get("non_working_days"):
+            text += f"; {summary['non_working_days']} weekend / non-working days"
+
+        pairs.append((key, text))
 
         layout.append(("Availability", [key]))
 
@@ -535,11 +540,19 @@ def _employee_availability(intent: Intent, state: SessionState, actor: Optional[
     if value in (None, ""):
         return text_reply(f"No availability is recorded for {name} on {day}.")
 
-    available = str(value).upper() == "Y"
+    code = str(value).strip().upper()
 
-    word = _AVAILABILITY_WORDS.get(str(value).upper(), str(value))
+    available = code == "Y"
 
-    text = f"**{name}** is {'**available**' if available else '**not available**'} on {day}."
+    word = _AVAILABILITY_WORDS.get(code, str(value))
+
+    if code == "NA":
+        text = f"**{name}** isn't scheduled on {day}: it's a weekend / non-working day."
+
+    else:
+        text = f"**{name}** is {'**available**' if available else '**not available**'} on {day}."
+
+    tone = "success" if available else "info" if code == "NA" else "warning"
 
     return Reply(
         text=text,
@@ -551,7 +564,7 @@ def _employee_availability(intent: Intent, state: SessionState, actor: Optional[
             "label": f"Availability on {day}",
             "value": word,
             "text": text,
-            "tone": "success" if available else "warning",
+            "tone": tone,
         },
     ).suggest(employee_suggestions(asked_availability=True))
 
@@ -601,13 +614,18 @@ def _team_availability(intent: Intent, state: SessionState, actor: Optional[str]
 
     team = result.get("team_name") or result.get("team_id")
 
-    groups: Dict[str, List[str]] = {"Available": [], "Not available": [], "No data": []}
+    groups: Dict[str, List[str]] = {
+        "Available": [],
+        "Not available": [],
+        "Non-working day": [],
+        "No data": [],
+    }
 
     for member in result["members"]:
 
-        value = str(member.get("availability") or "").upper()
+        value = str(member.get("availability") or "").strip().upper()
 
-        label = "Available" if value == "Y" else "Not available" if value == "N" else "No data"
+        label = _AVAILABILITY_WORDS.get(value, "No data")
 
         groups[label].append(member.get("name") or member.get("ref"))
 
@@ -625,7 +643,11 @@ def _team_availability(intent: Intent, state: SessionState, actor: Optional[str]
 
     total = len(result["members"])
 
-    lead = f"On **{day}**, {len(groups['Available'])} of {total} in **{team}** are available:"
+    if len(groups["Non-working day"]) == total:
+        lead = f"**{day}** is a weekend / non-working day for **{team}**, so nobody is scheduled:"
+
+    else:
+        lead = f"On **{day}**, {len(groups['Available'])} of {total} in **{team}** are available:"
 
     text = f"{lead}\n\n" + "\n".join(lines)
 
