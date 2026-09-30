@@ -15,7 +15,7 @@ treat every change as production-affecting.
 
 ```bash
 cd local_dev
-python -m unittest discover -s tests -t . -v     # 410 offline tests — run after every change
+python -m unittest discover -s tests -t . -v     # 433 offline tests — run after every change
 python dev/chat.py --demo --meta                  # try conversations with in-memory sample data, no AWS
 python dev/check_aws.py                           # read-only preflight against real AWS
 python dev/chat.py --read-only --meta             # real AWS, nothing can be written

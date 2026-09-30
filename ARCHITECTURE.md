@@ -95,7 +95,7 @@ user's back.
 | `tools/` | Thin, typed, token-lean wrappers over services, grouped into domains |
 | `config.py` | Environment-driven configuration and shared boto3 clients |
 | `local_dev/dev/` | `chat.py`, `check_aws.py`, `run_local.py`, `invoke_example.py` — local tooling, never deployed |
-| `local_dev/tests/` | 410 offline tests: fake DynamoDB/KB, scripted model — never deployed |
+| `local_dev/tests/` | 433 offline tests: fake DynamoDB/KB, scripted model — never deployed |
 
 ### Services (`services/`)
 
@@ -267,7 +267,7 @@ uses real AWS without writing; `check_aws.py` is the preflight.
 | Services own validation and error mapping | Consistent data, safe messages |
 | Roster modelled as monthly rows / persons | Matches the real table |
 | Domain-scoped tool definitions + caching | Cut the dominant per-call token cost |
-| Offline tests with fakes and a scripted model | Fast, safe regression net (410 tests) |
+| Offline tests with fakes and a scripted model | Fast, safe regression net (433 tests) |
 | `READ_ONLY_MODE`, `check_aws.py`, `chat.py` | Safe testing against real AWS |
 
 ---

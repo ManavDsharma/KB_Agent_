@@ -13,9 +13,10 @@ integration_reference/     mirror of your separate frontend / backend files that
 
 | Path | Purpose |
 | --- | --- |
-| `tests/` | 410 offline tests (fake DynamoDB / Knowledge Base, scripted model, no network) |
+| `tests/` | 433 offline tests (fake DynamoDB / Knowledge Base, scripted model, no network) |
 | `dev/chat.py` | Chat in the terminal (`--demo` = no AWS; `--read-only` = real AWS, nothing written) |
 | `dev/check_aws.py` | Read-only preflight against real AWS (credentials, table keys/types, KB, model) |
+| `dev/check_roster.py` | Read-only: how `days_availability` is really stored (map or JSON text) and what the agent makes of it |
 | `dev/run_local.py` | Host the agent locally exactly like AgentCore (`/ping`, `/invocations` on :8080) |
 | `dev/invoke_example.py` | Example client (local server or deployed runtime) |
 | `.env` | Your local settings and AWS keys (loaded only when `ENVIRONMENT=local`) |

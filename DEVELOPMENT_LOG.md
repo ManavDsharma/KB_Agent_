@@ -19,6 +19,7 @@ Last updated: 2026-09-30.
 | **V2.3** | Conversational, well-formatted responses for a chat frontend (cards, badges, sentences, suggestion chips); output-cap fix | 395 tests |
 | **V2.4** | Deployment readiness: deployable folder separated from local tooling; integration with the separate React/FastAPI application | 395 tests |
 | **V2.5** | Roster availability now understands `NA` (weekend / non-working day) as well as `Y` / `N` | 410 tests |
+| **V2.6** | Availability read from `days_availability` however it is stored (DynamoDB map **or JSON text**, padded keys, loose values) | 433 tests |
 
 ---
 
@@ -292,6 +293,29 @@ and `NA` (not scheduled: weekend / non-working day). The code only knew `Y` and 
   neutral.
 
 Result: **410 tests**.
+
+---
+
+## 5b. V2.6 — availability on the real `days_availability` column
+
+**Report:** "The code is not working for employee availability" — the column holds `{"1": "Y", "2": "N", ...}`
+(day of month -> Y available / N not available / NA weekend).
+
+### Cause (most likely; live data could not be inspected)
+The reader accepted only a DynamoDB *map*. If the column is stored as **JSON text** (very common when rows
+are loaded from a CSV/export), every row looked empty, so availability was "no data". Writes and the
+vocabulary scan had the same blind spot.
+
+### Changes
+* `decode_days()` reads a map, JSON text, single-quoted text, bytes or a list; keys may be zero-padded
+  (`"05"`); values are normalised (`y`, `Yes`, `n/a` -> `Y` / `NA`). Garbage yields "no days", never an error.
+* Days are handled as integers everywhere (summary, employee availability, team availability, writes).
+* Writes keep the column's own format: map -> per-key atomic `SET`; JSON text -> read-merge-write guarded by
+  `#days = :old` with retry; missing column -> created in the roster's prevailing style; new roster rows
+  follow the same style. Existing key spelling (`"05"`) is preserved.
+* `dev/check_roster.py` (read-only) prints the stored type, a raw sample and what was understood, per row.
+
+Result: **433 tests** (`tests/test_availability_formats.py`; the fake table now evaluates `#attr = :value`).
 
 ---
 

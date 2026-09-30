@@ -14,6 +14,8 @@ is referred to as "emp:<emp_id>". The availability map is never returned
 by search or lookup calls, only the requested days.
 """
 
+import ast
+import json
 from datetime import date, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -101,6 +103,119 @@ _NON_WORKING = {
 
 _VALUES = {"Y", "N", "NA"}
 
+_YES_CODES = {"Y", "YES", "TRUE", "1", "AVAILABLE"}
+
+_NO_CODES = {"N", "NO", "FALSE", "0"}
+
+_NA_CODES = {"NA", "N/A", "N.A.", "NOT APPLICABLE"}
+
+_MONTH_NAMES = {
+    name: number
+    for number, names in enumerate(
+        [
+            ("january", "jan"), ("february", "feb"), ("march", "mar"), ("april", "apr"),
+            ("may",), ("june", "jun"), ("july", "jul"), ("august", "aug"),
+            ("september", "sep", "sept"), ("october", "oct"), ("november", "nov"), ("december", "dec"),
+        ],
+        start=1,
+    )
+    for name in names
+}
+
+
+def normalize_code(value: Any) -> str:
+    """A stored day value ("y", "Yes", "N/A") -> "Y", "N" or "NA"."""
+
+    text = str(value).strip().upper()
+
+    if text in _YES_CODES:
+        return "Y"
+
+    if text in _NO_CODES:
+        return "N"
+
+    if text in _NA_CODES:
+        return "NA"
+
+    return text
+
+
+def decode_days(raw: Any) -> Tuple[Dict[int, str], Dict[Any, Any], str]:
+    """
+    Read a days_availability column, whichever way it is stored.
+
+    Returns (codes, original, kind):
+        codes     {day_of_month: "Y" | "N" | "NA"} with values normalised
+        original  the parsed content with its own keys and values (for writes)
+        kind      "map" (a DynamoDB map), "string" (JSON text) or "missing"
+
+    Accepts {"1": "Y"}, the same as JSON text, zero-padded keys ("01") and a
+    plain list (index 0 = day 1). Unreadable content yields no days.
+    """
+
+    value = to_plain(raw)
+
+    kind = "missing" if value is None else "map"
+
+    if isinstance(value, (bytes, bytearray)):
+        value = value.decode("utf-8", "ignore")
+
+    if isinstance(value, str):
+
+        kind = "string"
+
+        text = value.strip()
+
+        parsed = None
+
+        if text:
+
+            try:
+                parsed = json.loads(text)
+
+            except ValueError:
+
+                try:
+                    parsed = ast.literal_eval(text)
+
+                except (ValueError, SyntaxError):
+                    parsed = None
+
+        value = parsed
+
+    if isinstance(value, list):
+        value = {str(index): item for index, item in enumerate(value, start=1)}
+
+    if not isinstance(value, dict):
+        return {}, {}, kind
+
+    codes: Dict[int, str] = {}
+
+    for key, item in value.items():
+
+        try:
+            codes[int(str(key).strip())] = normalize_code(item)
+
+        except ValueError:
+            continue
+
+    return codes, dict(value), kind
+
+
+def key_for_day(original: Dict[Any, Any], day: int) -> str:
+    """The key a day already has in the column ("05"), else its plain number."""
+
+    for key in original:
+
+        try:
+            if int(str(key).strip()) == day:
+                return str(key)
+
+        except ValueError:
+            continue
+
+    return str(day)
+
 
 # ============================================================
 # ROW HELPERS
@@ -115,8 +230,19 @@ def _int(value: Any) -> int:
         return 0
 
 
+def _month_number(value: Any) -> int:
+    """8, "8", "08" and "August" all mean month 8."""
+
+    number = _int(value)
+
+    if number:
+        return number
+
+    return _MONTH_NAMES.get(str(value).strip().lower(), 0)
+
+
 def _month_key(row: Dict[str, Any]) -> Tuple[int, int]:
-    return _int(row.get("year")), _int(row.get("month"))
+    return _int(row.get("year")), _month_number(row.get("month"))
 
 
 def _month_label(key: Tuple[int, int]) -> str:
@@ -412,8 +538,8 @@ class RosterService:
     # Availability data
     # --------------------------------------------------------
 
-    def _days(self, uid: Any) -> Dict[str, Any]:
-        """The day-of-month -> Y/N map of one monthly row."""
+    def _read_days(self, uid: Any) -> Tuple[Dict[int, str], Dict[Any, Any], str, Any]:
+        """(codes, original, kind, raw) of one monthly row's days_availability."""
 
         item = self.table.get_item(
             Key={"UID": uid},
@@ -421,9 +547,16 @@ class RosterService:
             ExpressionAttributeNames={"#d": "days_availability"},
         ).get("Item")
 
-        days = to_plain((item or {}).get("days_availability"))
+        raw = (item or {}).get("days_availability")
 
-        return days if isinstance(days, dict) else {}
+        codes, original, kind = decode_days(raw)
+
+        return codes, original, kind, raw
+
+    def _days(self, uid: Any) -> Dict[int, str]:
+        """{day_of_month: "Y" | "N" | "NA"} of one monthly row."""
+
+        return self._read_days(uid)[0]
 
     @staticmethod
     def _date_range(start: Any, end: Any = None) -> List[str]:
@@ -454,14 +587,11 @@ class RosterService:
 
         days = self._days(row["UID"])
 
-        def marked(code):
-            return [key for key, value in days.items() if str(value).strip().upper() == code]
+        working = [day for day, code in days.items() if code == "Y"]
 
-        working = marked("Y")
+        off = sorted(day for day, code in days.items() if code == "N")
 
-        off = sorted(int(key) for key in marked("N") if str(key).isdigit())
-
-        weekend = marked("NA")
+        weekend = [day for day, code in days.items() if code == "NA"]
 
         if not working and not off and not weekend:
             return None
@@ -605,7 +735,7 @@ class RosterService:
                 availability[iso] = None
 
             else:
-                availability[iso] = maps[key].get(str(day.day))
+                availability[iso] = maps[key].get(day.day)
 
         result: Dict[str, Any] = {
             "ok": True,
@@ -648,7 +778,7 @@ class RosterService:
                 "ref": person_ref(row),
                 "name": row.get("employee_name"),
                 "shift": row.get("shift"),
-                "availability": self._days(row["UID"]).get(str(day.day)),
+                "availability": self._days(row["UID"]).get(day.day),
             }
             for row in rows[: MAX_RESULT_LIMIT * 2]
         ]
@@ -666,31 +796,39 @@ class RosterService:
     # Availability writes
     # --------------------------------------------------------
 
-    def _vocabulary(self) -> List[str]:
-        """Text values already used for a day (normally just "Y" and "N")."""
+    def _availability_profile(self) -> Dict[str, Any]:
+        """
+        What the roster already uses for days_availability (cached):
+        the day values in use, and whether rows hold a map or JSON text.
+        """
 
         def load():
 
             found = set()
 
+            styles = set()
+
             for item in scan_items(self.table, fields=["days_availability"]):
 
-                days = item.get("days_availability")
+                codes, _, kind = decode_days(item.get("days_availability"))
 
-                if not isinstance(days, dict):
-                    continue
+                if kind in ("map", "string"):
+                    styles.add(kind)
 
-                for value in days.values():
+                found.update(codes.values())
 
-                    if isinstance(value, str) and value.strip():
-                        found.add(value.strip())
+            vocabulary = sorted(found) if len(found) <= 30 else []
 
-                if len(found) > 30:
-                    return []
+            style = "string" if styles == {"string"} else "map"
 
-            return sorted(found)
+            return {"vocabulary": vocabulary, "style": style}
 
-        return self._vocabulary_cache.get_or_load("vocabulary", load)
+        return self._vocabulary_cache.get_or_load("profile", load)
+
+    def _vocabulary(self) -> List[str]:
+        """Day values already in use (normally just "Y", "N" and "NA")."""
+
+        return self._availability_profile()["vocabulary"]
 
     def _clean_day_value(self, value: Any) -> str:
         """User wording ("leave", "available", true) -> the stored value."""
@@ -734,10 +872,42 @@ class RosterService:
     def _set_days(
         self,
         uid: Any,
-        updates: Dict[str, Any],
+        updates: Dict[int, str],
         actor: Optional[str],
     ) -> None:
-        """Atomically set individual days without rewriting the map."""
+        """
+        Set individual days of one monthly row without disturbing the rest.
+
+        A map column is updated one key at a time (atomic). A JSON-text
+        column is read, merged and written back conditionally on the text
+        not having changed, and retried if someone else got there first.
+        """
+
+        for attempt in range(3):
+
+            _, original, kind, raw = self._read_days(uid)
+
+            try:
+
+                if kind == "string":
+                    self._write_text_days(uid, original, raw, updates, actor)
+
+                else:
+                    self._write_map_days(uid, original, kind, updates, actor)
+
+                return
+
+            except ClientError as exc:
+
+                code = exc.response.get("Error", {}).get("Code")
+
+                if code == "ConditionalCheckFailedException" and attempt < 2:
+                    continue
+
+                raise
+
+    def _audit_parts(self, actor: Optional[str]):
+        """SET fragments common to every availability write."""
 
         names = {"#days": "days_availability", "#on": "updated_on", "#pk": "UID"}
 
@@ -750,41 +920,90 @@ class RosterService:
             values[":by"] = actor
             parts.append("#by = :by")
 
-        for index, (day, value) in enumerate(updates.items()):
+        return names, values, parts
 
-            names[f"#d{index}"] = day
+    def _write_text_days(
+        self,
+        uid: Any,
+        original: Dict[Any, Any],
+        raw: Any,
+        updates: Dict[int, str],
+        actor: Optional[str],
+    ) -> None:
 
-            values[f":v{index}"] = value
+        merged = dict(original)
+
+        for day, code in updates.items():
+            merged[key_for_day(original, day)] = code
+
+        ordered = dict(
+            sorted(merged.items(), key=lambda pair: int(str(pair[0])) if str(pair[0]).strip().isdigit() else 99)
+        )
+
+        names, values, parts = self._audit_parts(actor)
+
+        values[":new"] = json.dumps(ordered, ensure_ascii=False)
+
+        values[":old"] = raw if isinstance(raw, str) else ""
+
+        parts.append("#days = :new")
+
+        self.table.update_item(
+            Key={"UID": uid},
+            UpdateExpression="SET " + ", ".join(parts),
+            ExpressionAttributeNames=names,
+            ExpressionAttributeValues=values,
+            ConditionExpression="attribute_exists(#pk) AND #days = :old",
+        )
+
+    def _write_map_days(
+        self,
+        uid: Any,
+        original: Dict[Any, Any],
+        kind: str,
+        updates: Dict[int, str],
+        actor: Optional[str],
+    ) -> None:
+
+        names, values, parts = self._audit_parts(actor)
+
+        if kind == "missing":
+
+            # The row has no availability yet: create it in the roster's own style.
+            fresh = {str(day): code for day, code in updates.items()}
+
+            names_only = {"#days": "days_availability", "#on": "updated_on", "#pk": "UID"}
+
+            style = self._availability_profile()["style"]
+
+            self.table.update_item(
+                Key={"UID": uid},
+                UpdateExpression="SET #days = :days, #on = :on",
+                ExpressionAttributeNames=names_only,
+                ExpressionAttributeValues={
+                    ":days": json.dumps(fresh) if style == "string" else fresh,
+                    ":on": local_date(),
+                },
+                ConditionExpression="attribute_exists(#pk) AND attribute_not_exists(#days)",
+            )
+
+            return
+
+        for index, (day, code) in enumerate(updates.items()):
+
+            names[f"#d{index}"] = key_for_day(original, day)
+
+            values[f":v{index}"] = code
 
             parts.append(f"#days.#d{index} = :v{index}")
 
-        try:
-
-            self.table.update_item(
-                Key={"UID": uid},
-                UpdateExpression="SET " + ", ".join(parts),
-                ExpressionAttributeNames=names,
-                ExpressionAttributeValues=values,
-                ConditionExpression="attribute_exists(#pk)",
-            )
-
-        except ClientError as exc:
-
-            if exc.response.get("Error", {}).get("Code") != "ValidationException":
-                raise
-
-            # The row has no availability map yet: create it.
-            self.table.update_item(
-                Key={"UID": uid},
-                UpdateExpression="SET #days = :map, #on = :on",
-                ExpressionAttributeNames={
-                    "#days": "days_availability",
-                    "#on": "updated_on",
-                    "#pk": "UID",
-                },
-                ExpressionAttributeValues={":map": updates, ":on": local_date()},
-                ConditionExpression="attribute_exists(#pk) AND attribute_not_exists(#days)",
-            )
+        self.table.update_item(
+            Key={"UID": uid},
+            UpdateExpression="SET " + ", ".join(parts),
+            ExpressionAttributeNames=names,
+            ExpressionAttributeValues=values,
+            ConditionExpression="attribute_exists(#pk)",
+        )
 
     @guarded
     def set_employee_availability(
@@ -829,7 +1048,7 @@ class RosterService:
 
                 rows[key] = row
 
-            planned.setdefault(key, {})[str(day.day)] = (iso, self._clean_day_value(raw_value))
+            planned.setdefault(key, {})[day.day] = (iso, self._clean_day_value(raw_value))
 
         changes: Dict[str, Any] = {}
 
@@ -889,7 +1108,7 @@ class RosterService:
 
             try:
 
-                self._set_days(row["UID"], {str(day.day): value}, actor)
+                self._set_days(row["UID"], {day.day: value}, actor)
 
                 done.append(name)
 
@@ -1198,7 +1417,7 @@ class RosterService:
             "month": month,
             **data,
             "active": active,
-            "days_availability": {},
+            "days_availability": "{}" if self._availability_profile()["style"] == "string" else {},
             "created_on": local_date(),
             "updated_on": local_date(),
         }

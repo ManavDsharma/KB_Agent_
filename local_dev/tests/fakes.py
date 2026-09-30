@@ -90,7 +90,7 @@ class FakeTable:
     def _resolve(name: str, names: Dict[str, str]) -> str:
         return names.get(name, name)
 
-    def _check(self, condition: Optional[str], item, names) -> None:
+    def _check(self, condition: Optional[str], item, names, values=None) -> None:
 
         if not condition:
             return
@@ -98,6 +98,18 @@ class FakeTable:
         for clause in condition.split(" AND "):
 
             clause = clause.strip()
+
+            if "(" not in clause:
+
+                # "#attr = :value"
+                left, right = (part.strip() for part in clause.split(" = "))
+
+                current = (item or {}).get(self._resolve(left, names), object())
+
+                if item is None or current != (values or {})[right]:
+                    raise client_error("ConditionalCheckFailedException")
+
+                continue
 
             attribute = self._resolve(clause[clause.index("(") + 1: -1], names)
 
@@ -187,7 +199,7 @@ class FakeTable:
 
         item = self.items.get(Key[self.key])
 
-        self._check(ConditionExpression, item, names)
+        self._check(ConditionExpression, item, names, values)
 
         staged = copy.deepcopy(item)
 
