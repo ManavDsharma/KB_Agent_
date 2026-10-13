@@ -1,0 +1,21 @@
+# Virtual Environments
+.venv/
+venv/
+env/
+ENV/
+pyenv/
+
+# Environments and Secrets
+.env
+.env.local
+.env.*
+!.env.example
+
+# IDEs and OS files (Optional but recommended)
+.vscode/
+.idea/
+.DS_Store
+
+# Python bytecode
+__pycache__/
+*.pyc

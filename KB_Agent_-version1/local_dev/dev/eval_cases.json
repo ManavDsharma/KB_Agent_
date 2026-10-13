@@ -1,0 +1,480 @@
+{
+  "_about": "Cases for dev/evaluate.py. Each case is a conversation on in-memory sample data. 'draft' is what a correct planner model would return: it is used offline and ignored with --live (the real model is used instead). expect.route is the router/agent route (plan, plan_resume, plan_execute, entity_update, llm ...), expect.tier is execute | confirm | ask | error | fallback | noop. Templates: {day} a working day number, {iso_day} that day as YYYY-MM-DD, {month_name}, {today}.",
+  "cases": [
+    {
+      "id": "fast-single-field",
+      "category": "fast path (no model)",
+      "turns": [
+        {
+          "say": "Update INC0000259 priority to P2",
+          "expect": {"route": "entity_update", "planner_calls": 0, "tokens": 0, "contains": ["Updated INC0000259", "P2-High"]}
+        }
+      ],
+      "expect_data": [{"table": "incidents", "key": "INC0000259", "field": "priority", "equals": "P2-High"}]
+    },
+    {
+      "id": "fast-close-it",
+      "category": "fast path (no model)",
+      "turns": [
+        {"say": "Show INC0000259", "expect": {"route": "entity_view", "planner_calls": 0}},
+        {"say": "close it", "expect": {"route": "entity_update", "planner_calls": 0, "tokens": 0}}
+      ],
+      "expect_data": [{"table": "incidents", "key": "INC0000259", "field": "state", "equals": "Closed"}]
+    },
+    {
+      "id": "fast-assign",
+      "category": "fast path (no model)",
+      "turns": [
+        {"say": "Assign INC0000259 to Rohit", "expect": {"route": "entity_update", "planner_calls": 0}}
+      ],
+      "expect_data": [{"table": "incidents", "key": "INC0000259", "field": "assigned_to", "equals": "rohit.malhotra@abc.com"}]
+    },
+    {
+      "id": "read-two-fields-is-a-read",
+      "category": "fast path (no model)",
+      "turns": [
+        {"say": "What is the priority and urgency of INC0000259?", "expect": {"route": "entity_fields", "planner_calls": 0, "tokens": 0}}
+      ]
+    },
+
+    {
+      "id": "screenshot-both-fields",
+      "category": "several fields on one record",
+      "turns": [
+        {
+          "say": "Set both Priority and urgency of the INC0000259 to High",
+          "draft": [{"action": "update", "record": "incident", "targets": ["INC0000259"], "changes": {"priority": "High", "urgency": "High"}}],
+          "expect": {"route": "plan", "tier": "execute", "type": "update_confirmation", "planner_calls": 1, "contains": ["Updated INC0000259", "Priority: P3-Medium → P2-High", "Urgency: Low → High"]}
+        }
+      ],
+      "expect_data": [
+        {"table": "incidents", "key": "INC0000259", "field": "priority", "equals": "P2-High"},
+        {"table": "incidents", "key": "INC0000259", "field": "urgency", "equals": "High"}
+      ]
+    },
+    {
+      "id": "fields-joined-by-comma",
+      "category": "several fields on one record",
+      "turns": [
+        {
+          "say": "Update INC0000259 priority High, urgency High",
+          "draft": [{"action": "update", "record": "incident", "targets": ["INC0000259"], "changes": {"priority": "High", "urgency": "High"}}],
+          "expect": {"route": "plan", "tier": "execute", "contains": ["Updated INC0000259"]}
+        }
+      ],
+      "expect_data": [{"table": "incidents", "key": "INC0000259", "field": "urgency", "equals": "High"}]
+    },
+    {
+      "id": "priority-and-assignee",
+      "category": "several fields on one record",
+      "turns": [
+        {
+          "say": "Set priority to High and assign INC0000259 to Rohit",
+          "draft": [{"action": "update", "record": "incident", "targets": ["INC0000259"], "changes": {"priority": "High", "assigned_to": "Rohit"}}],
+          "expect": {"route": "plan", "tier": "execute", "contains": ["Updated INC0000259"]}
+        }
+      ],
+      "expect_data": [
+        {"table": "incidents", "key": "INC0000259", "field": "priority", "equals": "P2-High"},
+        {"table": "incidents", "key": "INC0000259", "field": "assigned_to", "equals": "rohit.malhotra@abc.com"}
+      ]
+    },
+    {
+      "id": "fields-with-context",
+      "category": "several fields on one record",
+      "turns": [
+        {"say": "Show INC0000259", "expect": {"route": "entity_view"}},
+        {
+          "say": "Set priority and urgency to high",
+          "draft": [{"action": "update", "record": "incident", "targets": [], "changes": {"priority": "high", "urgency": "high"}}],
+          "expect": {"route": "plan", "tier": "execute", "contains": ["Updated INC0000259"]}
+        }
+      ],
+      "expect_data": [{"table": "incidents", "key": "INC0000259", "field": "priority", "equals": "P2-High"}]
+    },
+    {
+      "id": "category-matrix-two-fields",
+      "category": "several fields on one record",
+      "turns": [
+        {
+          "say": "Set impact to High and urgency to High for Issue-1",
+          "draft": [{"action": "update", "record": "issue", "targets": ["Issue-1"], "changes": {"impact": "High", "urgency": "High"}}],
+          "expect": {"route": "plan", "tier": "execute", "contains": ["Updated Issue-1"]}
+        }
+      ],
+      "expect_data": [
+        {"table": "issues", "key": "Issue-1", "field": "impact", "equals": "High"},
+        {"table": "issues", "key": "Issue-1", "field": "urgency", "equals": "High"}
+      ]
+    },
+    {
+      "id": "verb-the-router-has-no-pattern-for",
+      "category": "several fields on one record",
+      "turns": [
+        {
+          "say": "bump INC0000259 to high priority",
+          "draft": [{"action": "update", "record": "incident", "targets": ["INC0000259"], "changes": {"priority": "high"}}],
+          "expect": {"route": "plan", "tier": "execute", "contains": ["Updated INC0000259"]}
+        }
+      ],
+      "expect_data": [{"table": "incidents", "key": "INC0000259", "field": "priority", "equals": "P2-High"}]
+    },
+    {
+      "id": "paraphrase-two-fields",
+      "category": "several fields on one record",
+      "live_only": true,
+      "turns": [
+        {
+          "say": "please make INC0000259 high priority and also high urgency",
+          "expect": {"route": "plan", "tier": "execute", "contains": ["Updated INC0000259"]}
+        }
+      ],
+      "expect_data": [
+        {"table": "incidents", "key": "INC0000259", "field": "priority", "equals": "P2-High"},
+        {"table": "incidents", "key": "INC0000259", "field": "urgency", "equals": "High"}
+      ]
+    },
+
+    {
+      "id": "ask-for-the-target-then-finish",
+      "category": "asking only for what is missing",
+      "turns": [
+        {
+          "say": "Set priority to High and urgency to Low",
+          "draft": [{"action": "update", "record": "incident", "targets": [], "changes": {"priority": "High", "urgency": "Low"}}],
+          "expect": {"route": "plan", "tier": "ask", "type": "question", "contains": ["Which incident"]}
+        },
+        {
+          "say": "INC0000259",
+          "expect": {"route": "plan_resume", "tier": "execute", "planner_calls": 0, "tokens": 0, "contains": ["Updated INC0000259"]}
+        }
+      ],
+      "expect_data": [
+        {"table": "incidents", "key": "INC0000259", "field": "priority", "equals": "P2-High"},
+        {"table": "incidents", "key": "INC0000259", "field": "urgency", "equals": "Low"}
+      ]
+    },
+    {
+      "id": "ask-for-missing-values",
+      "category": "asking only for what is missing",
+      "turns": [
+        {
+          "say": "Set priority and urgency of INC0000259",
+          "draft": [{"action": "update", "record": "incident", "targets": ["INC0000259"], "changes": {"priority": "", "urgency": ""}}],
+          "expect": {"route": "plan", "tier": "ask", "contains": ["What should the priority be"]}
+        },
+        {"say": "High", "expect": {"route": "plan_resume", "tier": "ask", "contains": ["What should the urgency be"]}},
+        {"say": "Low", "expect": {"route": "plan_resume", "tier": "execute", "contains": ["Updated INC0000259"]}}
+      ],
+      "expect_data": [
+        {"table": "incidents", "key": "INC0000259", "field": "priority", "equals": "P2-High"},
+        {"table": "incidents", "key": "INC0000259", "field": "urgency", "equals": "Low"}
+      ]
+    },
+    {
+      "id": "invalid-value-offers-the-valid-ones",
+      "category": "asking only for what is missing",
+      "turns": [
+        {
+          "say": "Set priority to Urgent and urgency to High on INC0000259",
+          "draft": [{"action": "update", "record": "incident", "targets": ["INC0000259"], "changes": {"priority": "Urgent", "urgency": "High"}}],
+          "expect": {"route": "plan", "tier": "ask", "contains": ["isn't a valid priority"]}
+        },
+        {"say": "2", "expect": {"route": "plan_resume", "tier": "execute", "contains": ["Updated INC0000259"]}}
+      ],
+      "expect_data": [{"table": "incidents", "key": "INC0000259", "field": "priority", "equals": "P2-High"}]
+    },
+
+    {
+      "id": "close-two-then-confirm",
+      "category": "several records (confirmation)",
+      "turns": [
+        {
+          "say": "Close INC0000259 and INC0000260",
+          "draft": [{"action": "update", "record": "incident", "targets": ["INC0000259", "INC0000260"], "changes": {"state": "Closed"}}],
+          "expect": {"route": "plan", "tier": "confirm", "confirmation": true, "contains": ["Here's what I'll change", "INC0000259", "INC0000260"]}
+        },
+        {"say": "yes", "expect": {"route": "plan_execute", "planner_calls": 0, "tokens": 0, "contains": ["Updated 2 records"]}}
+      ],
+      "expect_data": [
+        {"table": "incidents", "key": "INC0000259", "field": "state", "equals": "Closed"},
+        {"table": "incidents", "key": "INC0000260", "field": "state", "equals": "Closed"}
+      ]
+    },
+    {
+      "id": "close-two-then-cancel",
+      "category": "several records (confirmation)",
+      "turns": [
+        {
+          "say": "Close INC0000259 and INC0000260",
+          "draft": [{"action": "update", "record": "incident", "targets": ["INC0000259", "INC0000260"], "changes": {"state": "Closed"}}],
+          "expect": {"route": "plan", "tier": "confirm"}
+        },
+        {"say": "cancel", "expect": {"route": "plan_cancel", "contains": ["won't change anything"]}}
+      ],
+      "expect_data": [
+        {"table": "incidents", "key": "INC0000259", "field": "state", "equals": "New"},
+        {"table": "incidents", "key": "INC0000260", "field": "state", "equals": "In Progress"}
+      ]
+    },
+    {
+      "id": "unknown-record-in-a-batch",
+      "category": "several records (confirmation)",
+      "turns": [
+        {
+          "say": "Close INC0000259 and INC0009999",
+          "draft": [{"action": "update", "record": "incident", "targets": ["INC0000259", "INC0009999"], "changes": {"state": "Closed"}}],
+          "expect": {"route": "plan", "tier": "error", "contains": ["didn't change anything", "INC0009999"]}
+        }
+      ],
+      "expect_data": [{"table": "incidents", "key": "INC0000259", "field": "state", "equals": "New"}]
+    },
+
+    {
+      "id": "roster-two-people-one-day",
+      "category": "roster availability",
+      "turns": [
+        {
+          "say": "Mark Rohit and Priya unavailable on {iso_day}",
+          "draft": [{"action": "availability", "record": "employee", "targets": ["Rohit", "Priya"], "dates": ["{iso_day}"], "value": "unavailable"}],
+          "expect": {"route": "plan", "tier": "confirm", "contains": ["Rohit Malhotra", "Priya Nair", "Available → Not available"]}
+        },
+        {"say": "yes", "expect": {"route": "plan_execute", "contains": ["Updated 2 records"]}}
+      ],
+      "expect_data": [
+        {"table": "roster", "key": "1", "day": "{day}", "equals": "N"},
+        {"table": "roster", "key": "3", "day": "{day}", "equals": "N"},
+        {"table": "roster", "key": "4", "day": "{day}", "equals": "Y"}
+      ]
+    },
+    {
+      "id": "roster-the-reported-example",
+      "category": "roster availability",
+      "turns": [
+        {
+          "say": "update Rohit and Priya availability for 2nd {month_name} as false",
+          "draft": [{"action": "availability", "record": "employee", "targets": ["Rohit", "Priya"], "dates": ["2nd {month_name}"], "value": "false"}],
+          "expect": {"route": "plan", "tier": "confirm", "contains": ["No year was given"]}
+        },
+        {"say": "yes", "expect": {"route": "plan_execute", "contains": ["Updated"]}}
+      ],
+      "expect_data": [{"table": "roster", "key": "1", "day": "2", "equals": "N"}]
+    },
+    {
+      "id": "roster-one-person-today",
+      "category": "roster availability",
+      "turns": [
+        {
+          "say": "mark Rohit unavailable today",
+          "draft": [{"action": "availability", "record": "employee", "targets": ["Rohit"], "dates": ["today"], "value": "unavailable"}],
+          "expect": {"route": "plan", "tier": "execute", "contains": ["Updated Rohit Malhotra", "Available → Not available"]}
+        }
+      ],
+      "expect_data": [{"table": "roster", "key": "1", "day": "today", "equals": "N"}]
+    },
+    {
+      "id": "roster-date-range",
+      "category": "roster availability",
+      "turns": [
+        {
+          "say": "mark Rohit on leave from 3rd to 4th {month_name}",
+          "draft": [{"action": "availability", "record": "employee", "targets": ["Rohit"], "dates": ["3rd {month_name}"], "until": "4th {month_name}", "value": "leave"}],
+          "expect": {"route": "plan", "tier": "confirm"}
+        },
+        {"say": "yes", "expect": {"route": "plan_execute", "contains": ["Updated Rohit Malhotra"]}}
+      ],
+      "expect_data": [
+        {"table": "roster", "key": "1", "day": "3", "equals": "N"},
+        {"table": "roster", "key": "1", "day": "4", "equals": "N"}
+      ]
+    },
+    {
+      "id": "roster-ambiguous-name",
+      "category": "roster availability",
+      "world": {"second_rohit": true},
+      "turns": [
+        {
+          "say": "mark Rohit unavailable today",
+          "draft": [{"action": "availability", "record": "employee", "targets": ["Rohit"], "dates": ["today"], "value": "unavailable"}],
+          "expect": {"route": "plan", "tier": "ask", "type": "question", "contains": ["Several employees match 'Rohit'"]}
+        },
+        {"say": "Sharma", "expect": {"route": "plan_resume", "tier": "execute", "planner_calls": 0, "contains": ["Updated Rohit Sharma"]}}
+      ],
+      "expect_data": [
+        {"table": "roster", "key": "2", "day": "today", "equals": "N"},
+        {"table": "roster", "key": "1", "day": "today", "equals": "Y"}
+      ]
+    },
+    {
+      "id": "roster-month-without-a-roster",
+      "category": "roster availability",
+      "turns": [
+        {
+          "say": "mark Rohit and Priya unavailable on 2nd August 2020",
+          "draft": [{"action": "availability", "record": "employee", "targets": ["Rohit", "Priya"], "dates": ["2nd August 2020"], "value": "unavailable"}],
+          "expect": {"route": "plan", "tier": "error", "contains": ["no roster row"]}
+        }
+      ]
+    },
+    {
+      "id": "roster-shift-change",
+      "category": "roster availability",
+      "turns": [
+        {
+          "say": "Change Rohit's shift to S2",
+          "draft": [{"action": "update", "record": "employee", "targets": ["Rohit"], "changes": {"shift": "S2"}}],
+          "expect": {"route": "plan", "tier": "execute", "contains": ["Updated Rohit Malhotra", "Shift: S1 → S2"]}
+        }
+      ],
+      "expect_data": [{"table": "roster", "key": "1", "field": "shift", "equals": "S2"}]
+    },
+
+    {
+      "id": "list-then-both-of-them",
+      "category": "'them' = the list just shown",
+      "turns": [
+        {"say": "incidents today", "expect": {"route": "incident_list", "planner_calls": 0}},
+        {
+          "say": "update their urgency as HIGH for both of them",
+          "draft": [{"action": "update", "record": "incident", "targets": [], "changes": {"urgency": "HIGH"}}],
+          "expect": {"route": "plan", "tier": "confirm", "confirmation": true, "contains": ["INC0000259", "INC0000260", "list I just showed"]}
+        },
+        {"say": "yes", "expect": {"route": "plan_execute", "planner_calls": 0, "tokens": 0, "contains": ["Updated 2 records"]}}
+      ],
+      "expect_data": [
+        {"table": "incidents", "key": "INC0000259", "field": "urgency", "equals": "High"},
+        {"table": "incidents", "key": "INC0000260", "field": "urgency", "equals": "High"},
+        {"table": "incidents", "key": "INC0000258", "field": "urgency", "equals": "High"}
+      ]
+    },
+    {
+      "id": "list-then-them-one-already-matches",
+      "category": "'them' = the list just shown",
+      "turns": [
+        {"say": "incidents today", "expect": {"route": "incident_list"}},
+        {
+          "say": "update their priority as HIGH for both of them",
+          "draft": [{"action": "update", "record": "incident", "targets": [], "changes": {"priority": "HIGH"}}],
+          "expect": {"route": "plan", "tier": "confirm", "contains": ["INC0000259", "INC0000260 already has those values"]}
+        },
+        {"say": "yes", "expect": {"route": "plan_execute", "contains": ["Updated INC0000259"]}}
+      ],
+      "expect_data": [{"table": "incidents", "key": "INC0000259", "field": "priority", "equals": "P2-High"}]
+    },
+    {
+      "id": "them-with-no-list-asks-once",
+      "category": "'them' = the list just shown",
+      "turns": [
+        {
+          "say": "update their urgency as HIGH for both of them",
+          "draft": [{"action": "update", "record": "incident", "targets": [], "changes": {"urgency": "HIGH"}}],
+          "expect": {"route": "plan", "tier": "ask", "contains": ["Which incidents do you mean"]}
+        },
+        {"say": "INC0000259 and INC0000260", "expect": {"route": "plan_resume", "tier": "confirm", "planner_calls": 0}},
+        {"say": "yes", "expect": {"route": "plan_execute", "contains": ["Updated 2 records"]}}
+      ],
+      "expect_data": [
+        {"table": "incidents", "key": "INC0000259", "field": "urgency", "equals": "High"},
+        {"table": "incidents", "key": "INC0000260", "field": "urgency", "equals": "High"}
+      ]
+    },
+    {
+      "id": "them-is-not-the-record-in-focus",
+      "category": "'them' = the list just shown",
+      "turns": [
+        {"say": "Show INC0000259", "expect": {"route": "entity_view"}},
+        {
+          "say": "update their urgency as HIGH for both of them",
+          "draft": [{"action": "update", "record": "incident", "targets": [], "changes": {"urgency": "HIGH"}}],
+          "expect": {"route": "plan", "tier": "ask", "contains": ["Which incidents do you mean"]}
+        }
+      ],
+      "expect_data": [{"table": "incidents", "key": "INC0000259", "field": "urgency", "equals": "Low"}]
+    },
+    {
+      "id": "never-half-handle-a-read-of-two-records",
+      "category": "safety: what must not be planned",
+      "turns": [
+        {"say": "Show INC0000258 and INC0000259", "expect": {"route": "llm", "planner_calls": 0}}
+      ]
+    },
+    {
+      "id": "never-half-handle-a-delete-of-two-records",
+      "category": "safety: what must not be planned",
+      "turns": [
+        {"say": "Delete INC0000258 and INC0000259", "expect": {"route": "llm", "planner_calls": 0}}
+      ],
+      "expect_data": [{"table": "incidents", "key": "INC0000258", "field": "state", "equals": "Closed"}]
+    },
+    {
+      "id": "reasoning-goes-to-the-tool-agent",
+      "category": "safety: what must not be planned",
+      "turns": [
+        {"say": "How should I set the priority of INC0000259?", "expect": {"route": "llm", "planner_calls": 0}}
+      ]
+    },
+    {
+      "id": "unknown-record-single",
+      "category": "safety: what must not be planned",
+      "turns": [
+        {
+          "say": "Set priority to High and urgency to Low on INC0009999",
+          "draft": [{"action": "update", "record": "incident", "targets": ["INC0009999"], "changes": {"priority": "High", "urgency": "Low"}}],
+          "expect": {"route": "plan", "tier": "error", "contains": ["INC0009999"]}
+        }
+      ]
+    },
+
+    {
+      "id": "bad-draft-invented-value",
+      "category": "hallucination traps (offline: wrong drafts)",
+      "offline_only": true,
+      "turns": [
+        {
+          "say": "Set priority to High and urgency to Low on INC0000259",
+          "draft": [{"action": "update", "record": "incident", "targets": ["INC0000259"], "changes": {"priority": "P1-Critical", "urgency": "Low"}}],
+          "expect": {"route": "llm", "tier": "fallback"}
+        }
+      ],
+      "expect_data": [{"table": "incidents", "key": "INC0000259", "field": "priority", "equals": "P3-Medium"}]
+    },
+    {
+      "id": "bad-draft-dropped-record",
+      "category": "hallucination traps (offline: wrong drafts)",
+      "offline_only": true,
+      "turns": [
+        {
+          "say": "Close INC0000259 and INC0000260",
+          "draft": [{"action": "update", "record": "incident", "targets": ["INC0000259"], "changes": {"state": "Closed"}}],
+          "expect": {"route": "llm", "tier": "fallback"}
+        }
+      ],
+      "expect_data": [{"table": "incidents", "key": "INC0000259", "field": "state", "equals": "New"}]
+    },
+    {
+      "id": "bad-draft-invented-date",
+      "category": "hallucination traps (offline: wrong drafts)",
+      "offline_only": true,
+      "turns": [
+        {
+          "say": "mark Rohit unavailable tomorrow",
+          "draft": [{"action": "availability", "record": "employee", "targets": ["Rohit"], "dates": ["2030-01-01"], "value": "unavailable"}],
+          "expect": {"route": "llm", "tier": "fallback"}
+        }
+      ]
+    },
+    {
+      "id": "bad-draft-invented-surname",
+      "category": "hallucination traps (offline: wrong drafts)",
+      "offline_only": true,
+      "turns": [
+        {
+          "say": "mark Rohit unavailable today",
+          "draft": [{"action": "availability", "record": "employee", "targets": ["Rohit Malhotra"], "dates": ["today"], "value": "unavailable"}],
+          "expect": {"route": "llm", "tier": "fallback"}
+        }
+      ],
+      "expect_data": [{"table": "roster", "key": "1", "day": "today", "equals": "Y"}]
+    }
+  ]
+}
